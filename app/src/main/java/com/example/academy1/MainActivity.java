@@ -3,7 +3,9 @@ package com.example.academy1;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.net.MailTo;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,6 +13,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -81,19 +84,29 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // Custom WebViewClient to handle WhatsApp links
+    // Custom WebViewClient to handle special links
     private class CustomWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            // Check if the URL starts with the WhatsApp scheme
-            if (url.startsWith("whatsapp://")) {
+            if (url.startsWith("whatsapp://send")) {
                 openWhatsApp(url);
                 return true;  // Indicates that the WebView should not load the URL
+            } else if (url.startsWith("fb://")) {
+                openFacebookInBrowser(url);
+                return true;
+            } else if (url.startsWith("mailto:")) {
+                openMailTo(url);
+                return true;
+            }
+            else if (url.startsWith("tel:")) {
+                openPhoneDialer(url);
+                return true;
             }
 
             // Load other URLs in the WebView
             return false;
         }
+        // Custom WebViewClient to handle WhatsApp links
 
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
@@ -113,16 +126,33 @@ public class MainActivity extends AppCompatActivity {
             // Handle other errors (e.g., display an error message)
             showErrorDialog("Error Loading Page", "There was an error loading the page. Please try again.");
         }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            // Handle URL schemes for Android N and above
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                String url = request.getUrl().toString();
+                if (url.startsWith("mailto:")) {
+                    openMailTo(url);
+                    return true;
+                }
+            }
+
+            return super.shouldOverrideUrlLoading(view, request);
+        }
     }
 
     private void openWhatsApp(String url) {
         try {
             // Extract the phone number from the WhatsApp URL
-            String phoneNumber = url.substring(url.lastIndexOf("/") + 1);
+            Uri uri = Uri.parse(url);
+            String phoneNumber = uri.getQueryParameter("phone");
+//            String phoneNumber = url.substring(url.lastIndexOf("/") + 1);
 
             // Create an Intent to open WhatsApp with the phone number
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setData(Uri.parse("https://api.whatsapp.com/send?phone=" + phoneNumber));
+//            intent.setData(Uri.parse("https://api.whatsapp.com/send?phone=" + phoneNumber));
             startActivity(intent);
         } catch (Exception e) {
             e.printStackTrace();
@@ -130,6 +160,51 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void openFacebookInBrowser(String url) {
+        try {
+            // Extract the Facebook page ID from the URL
+            String pageId = url.substring(url.lastIndexOf("/") + 1);
+
+            // Create an Intent to open the Facebook page in the browser
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse("https://www.facebook.com/" + pageId));
+            startActivity(intent);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Handle any exceptions that may occur while opening Facebook
+        }
+    }
+
+    private void openMailTo(String url) {
+        try {
+            // Parse the mailto URL
+            MailTo mt = MailTo.parse(url);
+            String emailAddress = mt.getTo();
+
+            // Create an Intent to open the default email client
+            Intent intent = new Intent(Intent.ACTION_SENDTO);
+            intent.setData(Uri.parse("mailto:" + emailAddress));
+            startActivity(intent);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Handle any exceptions that may occur while opening the email client
+        }
+    }
+    private void openPhoneDialer(String url) {
+        try {
+            // Extract the phone number from the tel URL
+            Uri uri = Uri.parse(url);
+            String phoneNumber = uri.getSchemeSpecificPart();
+
+            // Create an Intent to open the phone dialer
+            Intent intent = new Intent(Intent.ACTION_DIAL);
+            intent.setData(Uri.parse("tel:" + phoneNumber));
+            startActivity(intent);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Handle any exceptions that may occur while opening the phone dialer
+        }
+    }
     private void showErrorDialog(String title, String message) {
         new AlertDialog.Builder(this)
                 .setTitle(title)
@@ -147,6 +222,7 @@ public class MainActivity extends AppCompatActivity {
         webView.clearCache(true);
 
         // Clear cookies
+        CookieSyncManager.createInstance(this);
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.removeAllCookies(null);
         cookieManager.flush();
